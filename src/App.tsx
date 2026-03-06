@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Calendar, 
@@ -17,15 +17,7 @@ import {
   Activity,
   Smile,
   Sunrise,
-  Anchor,
-  Award,
-  Bell,
-  Book,
-  Camera,
-  Gift,
-  Music,
-  Star,
-  Target
+  Anchor
 } from 'lucide-react';
 import { MoodSelector } from './components/MoodSelector';
 
@@ -35,19 +27,6 @@ interface JournalEntry {
   emotion: string;
   note: string;
 }
-
-interface CustomEmotion {
-  id?: number;
-  name: string;
-  color: string;
-  icon: string;
-  description: string;
-}
-
-const ICON_MAP: Record<string, any> = {
-  Heart, Cloud, Zap, Moon, Sun, Flame, Wind, HandHeart, User, ShieldCheck, Coffee, Sparkles, Activity, Smile, Sunrise,
-  Anchor, Award, Bell, Book, Camera, Gift, Music, Star, Target
-};
 
 const FIXED_YEAR = 2026;
 type ViewTab = 'today' | 'year';
@@ -71,150 +50,82 @@ const DEFAULT_EMOTIONS = [
   { name: 'Recovering', color: '#81C784', icon: Anchor, description: 'In need of rest and restoration', insightLine: 'You were giving yourself permission to slow down.' },
 ];
 
+const STORAGE_KEY = 'chromalife:entries';
+
+function loadEntries(): Record<string, JournalEntry> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) return {};
+    return parsed;
+  } catch {
+    return {};
+  }
+}
+
+function persistEntries(entries: Record<string, JournalEntry>) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+  } catch {
+    // storage full or unavailable
+  }
+}
+
 export default function App() {
   const today = new Date().toISOString().split('T')[0];
-  const [entries, setEntries] = useState<Record<string, JournalEntry>>({});
-  const [customEmotions, setCustomEmotions] = useState<CustomEmotion[]>([]);
+  const [entries, setEntries] = useState<Record<string, JournalEntry>>(() => loadEntries());
   const [selectedDate, setSelectedDate] = useState<string>(today);
-   const [noteDraft, setNoteDraft] = useState<string>('');
+  const [noteDraft, setNoteDraft] = useState<string>('');
   const [isNoteActive, setIsNoteActive] = useState(false);
   const [activeTab, setActiveTab] = useState<ViewTab>('today');
   const [hoveredMonth, setHoveredMonth] = useState<number | null>(null);
   const [currentYear] = useState(FIXED_YEAR);
-  const [loading, setLoading] = useState(true);
 
   const isSelectedDateEditable = selectedDate === today;
 
-  const HIDDEN_CUSTOM_EMOTION_NAMES = ['Sunshine', 'Melancholy', 'Melancoley'];
-
-  const allEmotions = useMemo(() => {
-    const customMapped = customEmotions
-      .filter(ce => !HIDDEN_CUSTOM_EMOTION_NAMES.includes(ce.name))
-      .map(ce => ({
-        ...ce,
-        icon: ICON_MAP[ce.icon] || Star
-      }));
-    return [...DEFAULT_EMOTIONS, ...customMapped];
-  }, [customEmotions]);
+  const allEmotions = DEFAULT_EMOTIONS;
 
   const emotionInsightLine = useMemo(() => {
     const map: Record<string, string> = {};
-    allEmotions.forEach((e: { name: string; insightLine?: string; description?: string }) => {
+    allEmotions.forEach((e) => {
       map[e.name] = e.insightLine ?? e.description ?? '';
     });
     return map;
   }, [allEmotions]);
 
   useEffect(() => {
-    Promise.all([fetchEntries(), fetchCustomEmotions()]).finally(() => setLoading(false));
-  }, []);
-
-  // Sync noteDraft when selected day or entries change
-  useEffect(() => {
     setNoteDraft(entries[selectedDate]?.note ?? '');
   }, [selectedDate, entries]);
 
-  const fetchCustomEmotions = async () => {
-    try {
-      const response = await fetch('/api/emotions');
-      const data = await response.json();
-      setCustomEmotions(data);
-    } catch (error) {
-      console.error('Failed to fetch custom emotions:', error);
-    }
-  };
+  useEffect(() => {
+    persistEntries(entries);
+  }, [entries]);
 
-  const fetchEntries = async () => {
-    try {
-      const response = await fetch('/api/journal');
-      const data: JournalEntry[] = await response.json();
-      const entryMap = data.reduce((acc, entry) => {
-        acc[entry.date] = entry;
-        return acc;
-      }, {} as Record<string, JournalEntry>);
-      setEntries(entryMap);
-    } catch (error) {
-      console.error('Failed to fetch entries:', error);
-    }
-  };
-
-  const saveEntry = async (emotion: any, date?: string) => {
+  const saveEntry = (emotion: any, date?: string) => {
     const targetDate = date ?? selectedDate;
-    const newEntry = {
+    const newEntry: JournalEntry = {
       date: targetDate,
       color: emotion.color,
       emotion: emotion.name,
       note: entries[targetDate]?.note || ''
     };
 
-    // Optimistic: switch to Year tab and show new entry immediately
     setEntries(prev => ({ ...prev, [targetDate]: newEntry }));
     if (targetDate === today) {
       setSelectedDate(today);
       setActiveTab('year');
     }
-
-    try {
-      const response = await fetch('/api/journal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newEntry),
-      });
-      if (!response.ok) {
-        // Revert on failure
-        setEntries(prev => {
-          const next = { ...prev };
-          delete next[targetDate];
-          return next;
-        });
-        if (targetDate === today) setActiveTab('today');
-      }
-    } catch (error) {
-      console.error('Failed to save entry:', error);
-      setEntries(prev => {
-        const next = { ...prev };
-        delete next[targetDate];
-        return next;
-      });
-      if (targetDate === today) setActiveTab('today');
-    }
   };
 
-  const saveNote = async () => {
+  const saveNote = () => {
     const current = entries[selectedDate];
     if (!current) return;
 
-    const updatedEntry: JournalEntry = {
-      ...current,
-      note: noteDraft.trim(),
-    };
-
-    try {
-      const response = await fetch('/api/journal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedEntry),
-      });
-
-      if (response.ok) {
-        setEntries(prev => ({ ...prev, [selectedDate]: updatedEntry }));
-      }
-    } catch (error) {
-      console.error('Failed to save note:', error);
-    }
-  };
-
-  const deleteCustomEmotion = async (id: number) => {
-    try {
-      const response = await fetch(`/api/emotions/${id}`, { method: 'DELETE' });
-      if (response.ok) await fetchCustomEmotions();
-      else {
-        const err = await response.json();
-        alert(err.error ?? 'Could not remove emotion');
-      }
-    } catch (error) {
-      console.error('Failed to delete custom emotion:', error);
-    }
+    setEntries(prev => ({
+      ...prev,
+      [selectedDate]: { ...current, note: noteDraft.trim() }
+    }));
   };
 
   const daysOfYear = useMemo(() => {
@@ -236,18 +147,6 @@ export default function App() {
   const getDayColor = (date: string) => {
     return entries[date]?.color || '#f0f0f0';
   };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#fdfcf9]">
-        <motion.div 
-          animate={{ scale: [1, 1.2, 1] }}
-          transition={{ repeat: Infinity, duration: 2 }}
-          className="w-12 h-12 rounded-full bg-indigo-500"
-        />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen p-4 md:p-8 max-w-6xl mx-auto">
@@ -311,7 +210,6 @@ export default function App() {
                     moods={allEmotions}
                     selectedMoodName={entries[today]?.emotion ?? null}
                     onSelect={(emotion) => saveEntry(emotion, today)}
-                    onDeleteCustom={deleteCustomEmotion}
                   />
                 </div>
               </div>
