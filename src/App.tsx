@@ -51,6 +51,58 @@ const DEFAULT_EMOTIONS = [
 ];
 
 const STORAGE_KEY = 'chromalife:entries';
+const STORAGE_VERSION_KEY = 'chromalife:v';
+
+function toLocalDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function getLocalToday(): string {
+  return toLocalDateStr(new Date());
+}
+
+function parseLocalDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function migrateIfNeeded(entries: Record<string, JournalEntry>): Record<string, JournalEntry> {
+  try {
+    if (localStorage.getItem(STORAGE_VERSION_KEY) === '2') return entries;
+    if (Object.keys(entries).length === 0) {
+      localStorage.setItem(STORAGE_VERSION_KEY, '2');
+      return entries;
+    }
+
+    const ref = new Date(2026, 0, 15);
+    const oldStr = ref.toISOString().split('T')[0];
+    const newStr = toLocalDateStr(ref);
+
+    if (oldStr === newStr) {
+      localStorage.setItem(STORAGE_VERSION_KEY, '2');
+      return entries;
+    }
+
+    const oldMs = new Date(oldStr + 'T12:00:00Z').getTime();
+    const newMs = new Date(newStr + 'T12:00:00Z').getTime();
+    const shiftDays = Math.round((newMs - oldMs) / 86_400_000);
+
+    const migrated: Record<string, JournalEntry> = {};
+    for (const [dateStr, entry] of Object.entries(entries)) {
+      const d = new Date(dateStr + 'T12:00:00Z');
+      d.setUTCDate(d.getUTCDate() + shiftDays);
+      const fixed = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+      migrated[fixed] = { ...entry, date: fixed };
+    }
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+    localStorage.setItem(STORAGE_VERSION_KEY, '2');
+    return migrated;
+  } catch {
+    localStorage.setItem(STORAGE_VERSION_KEY, '2');
+    return entries;
+  }
+}
 
 function loadEntries(): Record<string, JournalEntry> {
   try {
@@ -58,7 +110,7 @@ function loadEntries(): Record<string, JournalEntry> {
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     if (typeof parsed !== 'object' || parsed === null) return {};
-    return parsed;
+    return migrateIfNeeded(parsed);
   } catch {
     return {};
   }
@@ -73,8 +125,7 @@ function persistEntries(entries: Record<string, JournalEntry>) {
 }
 
 export default function App() {
-  const now = new Date();
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const [today, setToday] = useState(getLocalToday);
   const [entries, setEntries] = useState<Record<string, JournalEntry>>(() => loadEntries());
   const [selectedDate, setSelectedDate] = useState<string>(today);
   const [noteDraft, setNoteDraft] = useState<string>('');
@@ -86,6 +137,21 @@ export default function App() {
   const isSelectedDateEditable = selectedDate === today;
 
   const allEmotions = DEFAULT_EMOTIONS;
+
+  useEffect(() => {
+    const check = () => {
+      const current = getLocalToday();
+      setToday(prev => {
+        if (prev !== current) {
+          setSelectedDate(sel => sel === prev ? current : sel);
+          return current;
+        }
+        return prev;
+      });
+    };
+    const id = setInterval(check, 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   const emotionInsightLine = useMemo(() => {
     const map: Record<string, string> = {};
@@ -135,8 +201,7 @@ export default function App() {
     const end = new Date(currentYear, 11, 31);
     
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const dd = new Date(d);
-      days.push(`${dd.getFullYear()}-${String(dd.getMonth() + 1).padStart(2, '0')}-${String(dd.getDate()).padStart(2, '0')}`);
+      days.push(toLocalDateStr(new Date(d)));
     }
     return days;
   }, [currentYear]);
@@ -181,7 +246,7 @@ export default function App() {
                       How are you feeling today?
                     </h3>
                     <p className="text-stone-400 text-lg mt-2 italic font-serif">
-                      {new Date(today).toLocaleDateString('en-US', { 
+                      {parseLocalDate(today).toLocaleDateString('en-US', { 
                         weekday: 'long', 
                         year: 'numeric', 
                         month: 'long', 
@@ -251,7 +316,7 @@ export default function App() {
                       const isSelected = selectedDate === date;
                       const isToday = today === date;
                       const entry = entries[date];
-                      const dateObj = new Date(date);
+                      const dateObj = parseLocalDate(date);
                       const isHoveredMonth = hoveredMonth !== null && dateObj.getMonth() === hoveredMonth;
                       
                       return (
@@ -314,7 +379,7 @@ export default function App() {
                       <div>
                         <h3 className="text-2xl font-serif">Day Insight</h3>
                         <p className="text-stone-400 text-sm italic font-serif">
-                          {new Date(selectedDate).toLocaleDateString('en-US', { 
+                          {parseLocalDate(selectedDate).toLocaleDateString('en-US', { 
                             month: 'long', 
                             day: 'numeric',
                             year: 'numeric'
