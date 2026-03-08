@@ -73,7 +73,8 @@ function persistEntries(entries: Record<string, JournalEntry>) {
 }
 
 export default function App() {
-  const today = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const [entries, setEntries] = useState<Record<string, JournalEntry>>(() => loadEntries());
   const [selectedDate, setSelectedDate] = useState<string>(today);
   const [noteDraft, setNoteDraft] = useState<string>('');
@@ -134,7 +135,8 @@ export default function App() {
     const end = new Date(currentYear, 11, 31);
     
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      days.push(new Date(d).toISOString().split('T')[0]);
+      const dd = new Date(d);
+      days.push(`${dd.getFullYear()}-${String(dd.getMonth() + 1).padStart(2, '0')}-${String(dd.getDate()).padStart(2, '0')}`);
     }
     return days;
   }, [currentYear]);
