@@ -343,13 +343,13 @@ export default function App() {
                                 onFocus={() => setIsNoteActive(true)}
                                 onBlur={() => setIsNoteActive(false)}
                                 placeholder="Add a short note here"
-                                className="bg-transparent border-none outline-none text-stone-300 font-serif font-normal text-sm leading-relaxed placeholder:text-stone-500/80 block w-full min-w-0 resize-none break-words overflow-y-auto"
+                                className="bg-transparent border-none outline-none text-stone-300 font-serif font-normal text-lg leading-relaxed placeholder:text-stone-500/80 block w-full min-w-0 resize-none break-words overflow-y-auto"
                                 style={{ caretColor: 'rgba(255,255,255,0.9)' }}
                                 maxLength={120}
                               />
                             </span>
                           ) : entries[selectedDate].note ? (
-                            <span className="block w-full min-w-0 break-words font-normal">{entries[selectedDate].note}</span>
+                            <span className="block w-full min-w-0 break-words font-normal text-lg">{entries[selectedDate].note}</span>
                           ) : null}
                         </p>
                         {isSelectedDateEditable ? (
