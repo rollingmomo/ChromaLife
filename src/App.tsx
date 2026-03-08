@@ -335,21 +335,21 @@ export default function App() {
                         <p className="text-stone-300 text-lg leading-relaxed font-serif italic space-y-1">
                           <span className="block">I feel {entries[selectedDate].emotion.toLowerCase()}.</span>
                           {isSelectedDateEditable ? (
-                            <span className="block">
-                              <input
-                                type="text"
+                            <span className="block w-full min-w-0">
+                              <textarea
+                                rows={2}
                                 value={noteDraft}
                                 onChange={(e) => setNoteDraft(e.target.value)}
                                 onFocus={() => setIsNoteActive(true)}
                                 onBlur={() => setIsNoteActive(false)}
                                 placeholder="Add a short note here"
-                                className="bg-transparent border-none outline-none text-stone-300 font-serif italic text-lg placeholder:text-stone-500/80 block w-full min-w-0"
+                                className="bg-transparent border-none outline-none text-stone-300 font-serif font-normal text-sm leading-relaxed placeholder:text-stone-500/80 block w-full min-w-0 resize-none break-words overflow-y-auto"
                                 style={{ caretColor: 'rgba(255,255,255,0.9)' }}
                                 maxLength={120}
                               />
                             </span>
                           ) : entries[selectedDate].note ? (
-                            <span className="block">{entries[selectedDate].note}</span>
+                            <span className="block w-full min-w-0 break-words font-normal">{entries[selectedDate].note}</span>
                           ) : null}
                         </p>
                         {isSelectedDateEditable ? (
