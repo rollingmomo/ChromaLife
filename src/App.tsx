@@ -66,40 +66,39 @@ function parseLocalDate(dateStr: string): Date {
   return new Date(y, m - 1, d);
 }
 
-function migrateIfNeeded(entries: Record<string, JournalEntry>): Record<string, JournalEntry> {
+function undoIncorrectMigration(entries: Record<string, JournalEntry>): Record<string, JournalEntry> {
   try {
-    if (localStorage.getItem(STORAGE_VERSION_KEY) === '2') return entries;
-    if (Object.keys(entries).length === 0) {
-      localStorage.setItem(STORAGE_VERSION_KEY, '2');
-      return entries;
+    const version = localStorage.getItem(STORAGE_VERSION_KEY);
+    if (version === '3') return entries;
+
+    if (version === '2' && Object.keys(entries).length > 0) {
+      const ref = new Date(2026, 0, 15);
+      const oldStr = ref.toISOString().split('T')[0];
+      const newStr = toLocalDateStr(ref);
+
+      if (oldStr !== newStr) {
+        const shiftDays = Math.round(
+          (new Date(newStr + 'T12:00:00Z').getTime() - new Date(oldStr + 'T12:00:00Z').getTime()) / 86_400_000
+        );
+
+        const restored: Record<string, JournalEntry> = {};
+        for (const [dateStr, entry] of Object.entries(entries)) {
+          const d = new Date(dateStr + 'T12:00:00Z');
+          d.setUTCDate(d.getUTCDate() - shiftDays);
+          const fixed = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+          restored[fixed] = { ...entry, date: fixed };
+        }
+
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(restored));
+        localStorage.setItem(STORAGE_VERSION_KEY, '3');
+        return restored;
+      }
     }
 
-    const ref = new Date(2026, 0, 15);
-    const oldStr = ref.toISOString().split('T')[0];
-    const newStr = toLocalDateStr(ref);
-
-    if (oldStr === newStr) {
-      localStorage.setItem(STORAGE_VERSION_KEY, '2');
-      return entries;
-    }
-
-    const oldMs = new Date(oldStr + 'T12:00:00Z').getTime();
-    const newMs = new Date(newStr + 'T12:00:00Z').getTime();
-    const shiftDays = Math.round((newMs - oldMs) / 86_400_000);
-
-    const migrated: Record<string, JournalEntry> = {};
-    for (const [dateStr, entry] of Object.entries(entries)) {
-      const d = new Date(dateStr + 'T12:00:00Z');
-      d.setUTCDate(d.getUTCDate() + shiftDays);
-      const fixed = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-      migrated[fixed] = { ...entry, date: fixed };
-    }
-
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
-    localStorage.setItem(STORAGE_VERSION_KEY, '2');
-    return migrated;
+    localStorage.setItem(STORAGE_VERSION_KEY, '3');
+    return entries;
   } catch {
-    localStorage.setItem(STORAGE_VERSION_KEY, '2');
+    localStorage.setItem(STORAGE_VERSION_KEY, '3');
     return entries;
   }
 }
@@ -110,7 +109,7 @@ function loadEntries(): Record<string, JournalEntry> {
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     if (typeof parsed !== 'object' || parsed === null) return {};
-    return migrateIfNeeded(parsed);
+    return undoIncorrectMigration(parsed);
   } catch {
     return {};
   }
